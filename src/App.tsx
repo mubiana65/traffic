@@ -1,36 +1,65 @@
-import { useEffect, useState } from "react";
-import {  ref, onValue, set } from "firebase/database";
-import { database } from './firebase.ts';
+import { database as db } from "./firebase";
+import { ref as dbRef, set as dbSet } from "firebase/database";
+import { useState } from "react";
+
+const trafficStates = ["red", "yellow", "green"] as const;
 
 export default function App() {
-  const [led, setLed] = useState(false);
-  const db = database;
-  useEffect(() => {
-    const ledRef = ref(db, "led");
-    onValue(ledRef, (snapshot) => {
-      setLed(snapshot.val());
-    }, (error) => {
-      console.error('Error fetching data:', error);
-    });
-  }, []);
-  const toggleLed = () => {
-    const newLedStatus = !led;
-    set(ref(db, 'led'), newLedStatus);
-    setLed(newLedStatus);
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const changeTrafficState = (state: string) => {
+    dbSet(dbRef(db, "/state"), state);
+    setSelected(state);
   };
 
-  console.log('App component rendered');
-
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-r from-purple-500 to-pink-500">
-      <h1 className="text-5xl font-extrabold text-white mb-6">ESP32 LED Controller</h1>
-      <p className="text-2xl mb-6">LED is <span className={led ? 'text-yellow-300' : 'text-gray-300'}>{led ? 'ON' : 'OFF'}</span></p>
-      <button
-        onClick={toggleLed}
-        className="px-6 py-3 bg-yellow-400 text-black rounded-full hover:bg-yellow-500 transition-colors shadow-lg"
-      >
-        Turn {led ? 'OFF' : 'ON'}
-      </button>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 p-4">
+      <div className="bg-white/10 backdrop-blur-lg shadow-2xl rounded-3xl p-8 w-full max-w-md text-center border border-white/20">
+        <h1 className="text-3xl font-bold mb-8 text-white tracking-tight">
+          Smart Traffic Light Control
+        </h1>
+        
+        <div className="bg-gray-800/50 rounded-2xl p-6 mb-6">
+          <div className="flex flex-col items-center gap-4">
+            {trafficStates.map((state) => (
+              <button
+                key={state}
+                onClick={() => changeTrafficState(state)}
+                className={`w-24 h-24 rounded-full border-4 transition-all duration-300 transform hover:scale-110
+                  ${
+                    state === "red"
+                      ? "bg-red-500 border-red-700 shadow-lg shadow-red-500/30"
+                      : state === "yellow"
+                      ? "bg-yellow-400 border-yellow-600 shadow-lg shadow-yellow-400/30"
+                      : "bg-green-500 border-green-700 shadow-lg shadow-green-500/30"
+                  } 
+                  ${
+                    selected === state
+                      ? "ring-4 ring-offset-4 ring-offset-gray-800 ring-white/50 scale-110"
+                      : "opacity-70 hover:opacity-100"
+                  }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-gray-800/50 rounded-xl p-4">
+          <p className="text-gray-300">
+            Current state:{" "}
+            <span className={`font-semibold ${
+              selected === "red" 
+                ? "text-red-400" 
+                : selected === "yellow" 
+                ? "text-yellow-400" 
+                : selected === "green" 
+                ? "text-green-400" 
+                : "text-gray-400"
+            }`}>
+              {selected || "none"}
+            </span>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
