@@ -9,18 +9,13 @@ import BoxDiagram from './BoxDiagram';
 import TrafficDashboard from './TrafficDashboard';
 import TrafficLightDisplay from './TrafficLightDisplay';
 
-interface Location {
-  id: string;
-  name: string;
-  address: string;
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  };
-  installationDate: string;
-  status: 'operational' | 'maintenance' | 'offline';
-  description: string;
-  createdAt: string;
+
+
+// Add new interface for green light durations
+interface GreenLightDurations {
+  northSouth: number;
+  eastWest: number;
+  lastChange: string;
 }
 
 // Mock data for demonstration
@@ -79,16 +74,17 @@ export default function Dashboard() {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const [stations, setStations] = useState(mockStations);
-  const [selectedStation, setSelectedStation] = useState<number | null>(null);
-  const [currentLight, setCurrentLight] = useState<'red' | 'yellow' | 'green'>('green');
-  const [manualOverride, setManualOverride] = useState(false);
-  const [systemStatus, setSystemStatus] = useState({
-    status: 'operational',
-    lastUpdate: new Date().toISOString(),
-    mode: 'automatic'
+
+  const [currentLight] = useState<'red' | 'yellow' | 'green'>('green');
+  const [manualOverride] = useState(false);
+  const [greenLightDurations, setGreenLightDurations] = useState<GreenLightDurations>({
+    northSouth: 0,
+    eastWest: 0,
+    lastChange: new Date().toISOString()
   });
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+ 
+  
+
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [systemHealth, setSystemHealth] = useState({
     cpu: 45,
@@ -96,7 +92,7 @@ export default function Dashboard() {
     network: 85,
     status: 'healthy'
   });
-  const [trafficData, setTrafficData] = useState<{
+  const [trafficData] = useState<{
     state: string;
     group: 'NS' | 'EW';
     counts: {
@@ -108,49 +104,10 @@ export default function Dashboard() {
   } | null>(null);
 
   // Listen to traffic light status changes from Firebase
-  useEffect(() => {
-    const statusRef = ref(database, 'trafficLight/status');
-    
-    const unsubscribe = onValue(statusRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        setCurrentLight(data.currentLight || 'green');
-        setSystemStatus({
-          status: data.status || 'operational',
-          lastUpdate: data.lastUpdate || new Date().toISOString(),
-          mode: data.mode || 'automatic'
-        });
-      }
-    }, (error) => {
-      console.error('Error fetching traffic light status:', error);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+ 
 
   // Listen to locations changes from Firebase
-  useEffect(() => {
-    const locationsRef = ref(database, 'trafficLight/locations');
-    
-    const unsubscribe = onValue(locationsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const locationsArray = Object.entries(data).map(([id, location]: [string, any]) => ({
-          id,
-          ...location
-        }));
-        setLocations(locationsArray);
-      }
-    }, (error) => {
-      console.error('Error fetching locations:', error);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+ 
 
   // Initialize test data in Firebase if no locations exist
   useEffect(() => {
@@ -210,15 +167,54 @@ export default function Dashboard() {
   const updateTrafficLightStatus = async (newLight: 'red' | 'yellow' | 'green') => {
     try {
       const statusRef = ref(database, 'trafficLight/status');
+      const now = new Date();
+      
+      // Calculate duration for the previous green light
+      if (currentLight === 'green') {
+        const lastChange = new Date(greenLightDurations.lastChange);
+        const duration = Math.floor((now.getTime() - lastChange.getTime()) / 1000 / 60); // Convert to minutes
+        
+        // Determine which direction was green based on the current traffic data
+        const isNorthSouth = trafficData?.group === 'NS';
+        
+        setGreenLightDurations(prev => ({
+          ...prev,
+          northSouth: isNorthSouth ? duration : prev.northSouth,
+          eastWest: !isNorthSouth ? duration : prev.eastWest,
+          lastChange: now.toISOString()
+        }));
+      }
+
       await update(statusRef, {
         currentLight: newLight,
-        lastUpdate: new Date().toISOString(),
+        lastUpdate: now.toISOString(),
         mode: manualOverride ? 'manual' : 'automatic'
       });
     } catch (error) {
       console.error('Error updating traffic light status:', error);
     }
   };
+
+  // Add effect to update durations in real-time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (currentLight === 'green') {
+        const now = new Date();
+        const lastChange = new Date(greenLightDurations.lastChange);
+        const duration = Math.floor((now.getTime() - lastChange.getTime()) / 1000 / 60);
+        
+        const isNorthSouth = trafficData?.group === 'NS';
+        
+        setGreenLightDurations(prev => ({
+          ...prev,
+          northSouth: isNorthSouth ? duration : prev.northSouth,
+          eastWest: !isNorthSouth ? duration : prev.eastWest
+        }));
+      }
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, [currentLight, greenLightDurations.lastChange, trafficData?.group]);
 
   // Simulate traffic light changes
   useEffect(() => {
@@ -234,27 +230,10 @@ export default function Dashboard() {
   }, [currentLight, manualOverride]);
 
   // Handle manual override toggle
-  const handleManualOverrideToggle = async () => {
-    const newManualOverride = !manualOverride;
-    setManualOverride(newManualOverride);
-    
-    try {
-      const statusRef = ref(database, 'trafficLight/status');
-      await update(statusRef, {
-        mode: newManualOverride ? 'manual' : 'automatic',
-        lastUpdate: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Error updating manual override status:', error);
-    }
-  };
+
 
   // Handle manual light change
-  const handleManualLightChange = async (newLight: 'red' | 'yellow' | 'green') => {
-    if (manualOverride) {
-      await updateTrafficLightStatus(newLight);
-    }
-  };
+
 
   // Simulate real-time updates
   useEffect(() => {
@@ -299,23 +278,9 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const getTrafficColor = (level: string) => {
-    switch (level) {
-      case 'low': return 'bg-green-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'high': return 'bg-red-500';
-      default: return 'bg-gray-500';
-    }
-  };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'operational': return 'bg-green-500';
-      case 'maintenance': return 'bg-yellow-500';
-      case 'offline': return 'bg-red-500';
-      default: return 'bg-gray-500';
-    }
-  };
+
+
 
   const getTotalVehicles = (station: typeof mockStations[0]) => {
     return Object.values(station.counts.vehicles).reduce((a, b) => a + b, 0);
@@ -480,22 +445,6 @@ export default function Dashboard() {
             </div>
             <p className="text-sm text-gray-400 mt-2">{systemHealth.memory.toFixed(1)}%</p>
           </div>
-
-          {/* <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-2xl">🌐</span>
-              <h3 className="text-lg font-semibold text-white">Network</h3>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-2.5">
-              <motion.div
-                className="bg-green-500 h-2.5 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${systemHealth.network}%` }}
-                transition={{ duration: 0.5 }}
-              />
-            </div>
-            <p className="text-sm text-gray-400 mt-2">{systemHealth.network.toFixed(1)}%</p>
-          </div> */}
         </motion.div>
 
         {/* Traffic Dashboard */}
@@ -573,6 +522,50 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold text-green-500">
                   {stations.filter(s => s.status === 'operational').length}
                 </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Update Green Light Duration Display */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+        >
+          <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">⬆️⬇️</span>
+              <div>
+                <h3 className="text-lg font-semibold text-white">North-South Green Duration</h3>
+                <p className="text-2xl font-bold text-green-500">
+                  {greenLightDurations.northSouth} min
+                </p>
+                <p className="text-sm text-gray-400">
+                  Last changed: {new Date(greenLightDurations.lastChange).toLocaleTimeString()}
+                </p>
+                {trafficData?.group === 'NS' && currentLight === 'green' && (
+                  <p className="text-sm text-green-400 mt-1">Currently Active</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">⬅️➡️</span>
+              <div>
+                <h3 className="text-lg font-semibold text-white">East-West Green Duration</h3>
+                <p className="text-2xl font-bold text-green-500">
+                  {greenLightDurations.eastWest} min
+                </p>
+                <p className="text-sm text-gray-400">
+                  Last changed: {new Date(greenLightDurations.lastChange).toLocaleTimeString()}
+                </p>
+                {trafficData?.group === 'EW' && currentLight === 'green' && (
+                  <p className="text-sm text-green-400 mt-1">Currently Active</p>
+                )}
               </div>
             </div>
           </div>
