@@ -4,8 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { database } from '../firebase';
 import { ref, onValue, update, set } from 'firebase/database';
-import LocationManager from './LocationManager';
-import TrafficMap from './TrafficMap';
+
 import BoxDiagram from './BoxDiagram';
 import TrafficDashboard from './TrafficDashboard';
 import TrafficLightDisplay from './TrafficLightDisplay';
@@ -482,7 +481,7 @@ export default function Dashboard() {
             <p className="text-sm text-gray-400 mt-2">{systemHealth.memory.toFixed(1)}%</p>
           </div>
 
-          <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
+          {/* <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-2xl">🌐</span>
               <h3 className="text-lg font-semibold text-white">Network</h3>
@@ -496,7 +495,7 @@ export default function Dashboard() {
               />
             </div>
             <p className="text-sm text-gray-400 mt-2">{systemHealth.network.toFixed(1)}%</p>
-          </div>
+          </div> */}
         </motion.div>
 
         {/* Traffic Dashboard */}
